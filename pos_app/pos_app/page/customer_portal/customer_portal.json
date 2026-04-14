@@ -1,0 +1,27 @@
+{
+ "content": null,
+ "creation": "2026-01-15 08:53:51.548978",
+ "docstatus": 0,
+ "doctype": "Page",
+ "icon": "",
+ "idx": 0,
+ "modified": "2026-01-19 08:51:01.770471",
+ "modified_by": "Administrator",
+ "module": "Pos App",
+ "name": "customer-portal",
+ "owner": "Administrator",
+ "page_name": "customer-portal",
+ "roles": [
+  {
+   "role": "Sales User"
+  },
+  {
+   "role": "Sales Manager"
+  }
+ ],
+ "script": null,
+ "standard": "Yes",
+ "style": null,
+ "system_page": 0,
+ "title": "Biils"
+}

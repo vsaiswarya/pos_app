@@ -1,0 +1,292 @@
+.pos-display-container {
+	max-width: 900px;
+	margin: 0 auto;
+	background: #ffffff;
+	border-radius: 8px;
+	box-shadow: 0 2px 12px rgba(0, 0, 0, 0.1);
+	overflow: hidden;
+	font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+.pos-header {
+	background: #2c5aa0;
+	color: white;
+	text-align: center;
+	border-bottom: 4px solid #1e3f5a;
+}
+
+.pos-header h4 {
+	margin: 0;
+	font-size: 20px;
+	font-weight: 600;
+	margin-bottom: 15px;
+	color: white;
+}
+
+.invoice-details {
+	display: flex;
+	justify-content: center;
+	gap: 30px;
+	font-size: 14px;
+	opacity: 0.95;
+}
+
+.invoice-no, .invoice-date {
+	font-weight: 500;
+}
+
+.pos-body {
+	padding: 20px;
+}
+
+.items-section {
+	margin-bottom: 30px;
+	max-height: 200px;
+	overflow-y: auto;
+}
+
+.pos-items-table {
+	width: 100%;
+	border-collapse: collapse;
+	margin-bottom: 20px;
+}
+
+.pos-items-table thead {
+	background-color: #f8f9fa;
+	border-bottom: 2px solid #e0e0e0;
+}
+
+.pos-items-table th {
+	padding: 5px;
+	text-align: right;
+	font-weight: 600;
+	color: #333;
+	font-size: 14px;
+}
+
+.pos-items-table th.item-name {
+	text-align: left;
+}
+
+.pos-items-table tbody tr {
+	border-bottom: 1px solid #f0f0f0;
+	transition: background-color 0.2s;
+}
+
+.pos-items-table tbody tr:hover {
+	background-color: #fafafa;
+}
+
+.pos-items-table td {
+	padding: 5px 15px;
+	font-size: 15px;
+	color: #555;
+}
+
+.pos-items-table td.item-name {
+	text-align: left;
+	font-weight: 500;
+	color: #333;
+}
+
+.pos-items-table td.item-qty,
+.pos-items-table td.item-rate,
+.pos-items-table td.item-amount {
+	text-align: right;
+	font-family: 'Courier New', monospace;
+}
+
+.totals-section {
+	display: flex;
+	justify-content: flex-end;
+
+	border-top: 2px solid #e0e0e0;
+}
+
+.totals-wrapper {
+	width: 100%;
+	max-width: 350px;
+}
+
+.total-row {
+	display: flex;
+	justify-content: space-between;
+	padding: 12px 0;
+	font-size: 15px;
+	border-bottom: 1px solid #f0f0f0;
+}
+
+.total-row .label {
+	color: #666;
+	font-weight: 500;
+}
+
+.total-row .value {
+	color: #333;
+	font-weight: 500;
+	font-family: 'Courier New', monospace;
+	min-width: 100px;
+	text-align: right;
+}
+
+.total-row.subtotal {
+	color: #666;
+}
+
+.total-row.tax-row {
+	color: #d9534f;
+}
+
+.total-row.tax-row .value {
+	color: #d9534f;
+}
+
+.total-row.discount-row {
+	color: #5cb85c;
+}
+
+.total-row.discount-row .value {
+	color: #5cb85c;
+}
+
+.total-row.grand-total {
+	background: #2c5aa0;
+	color: white;
+	padding: 18px;
+	margin: 20px -15px 0 -15px;
+	border-radius: 6px;
+	border-bottom: none;
+	font-size: 18px;
+	font-weight: 700;
+}
+
+.total-row.grand-total .label {
+	color: white;
+	font-size: 18px;
+}
+
+.total-row.grand-total .value {
+	color: white;
+	font-size: 24px;
+	font-weight: 700;
+}
+
+.pos-footer {
+	background-color: #f8f9fa;
+	padding: 25px;
+	text-align: center;
+	border-top: 1px solid #e0e0e0;
+}
+
+.pos-footer p {
+	margin: 8px 0;
+	color: #666;
+	font-size: 15px;
+}
+
+.pos-footer p.payment-method {
+	font-weight: 600;
+	color: #333;
+	margin-top: 15px;
+}
+
+/* Full Screen Styles */
+.fullscreen-active {
+	width: 100%;
+	height: 100%;
+	margin: 0;
+	padding: 0;
+	overflow: hidden;
+}
+
+.empty-state {
+	display: none;
+	align-items: center;
+	justify-content: center;
+	text-align: center;
+	width: 100%;
+	height: 100%;
+	position: fixed;
+	top: 0;
+	left: 0;
+	margin: 0;
+	z-index: 9999;
+}
+
+.empty-state.active {
+	display: flex;
+}
+
+.empty-state img {
+	width: 100%;
+	height: 100%;
+	object-fit: cover;
+}
+
+.data-content {
+	display: none;
+	width: 100%;
+	margin: 0 auto;
+	position: relative;
+	overflow: auto;
+	z-index: 9998;
+}
+
+.data-content.active {
+	display: block;
+}
+
+/* Fullscreen Button */
+.fullscreen-btn {
+	position: fixed;
+	top: 10px;
+	right: 10px;
+	z-index: 99999;
+	padding: 10px 15px;
+	font-size: 16px;
+}
+
+/* Navbar Hide */
+.navbar {
+	display: none;
+}
+
+/* Responsive Design */
+@media (max-width: 768px) {
+	.pos-display-container {
+		border-radius: 0;
+		box-shadow: none;
+	}
+
+	.pos-header {
+		padding: 20px;
+	}
+
+	.pos-header h2 {
+		font-size: 24px;
+	}
+
+	.invoice-details {
+		flex-direction: column;
+		gap: 10px;
+		font-size: 12px;
+	}
+
+	.pos-body {
+		padding: 20px;
+	}
+
+	.pos-items-table th,
+	.pos-items-table td {
+		padding: 12px 8px;
+		font-size: 13px;
+	}
+
+	.pos-header h2 {
+		margin-bottom: 10px;
+	}
+
+	.totals-wrapper {
+		max-width: 100%;
+	}
+}

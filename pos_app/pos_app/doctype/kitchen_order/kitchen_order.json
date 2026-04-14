@@ -1,0 +1,62 @@
+{
+  "doctype": "DocType",
+  "name": "Kitchen Order",
+  "module": "Pos App",
+  "custom": 1,
+  "fields": [
+    {
+      "fieldname": "pos_invoice",
+      "label": "POS Invoice",
+      "fieldtype": "Link",
+      "options": "POS Invoice",
+      "reqd": 1
+    },
+    {
+      "fieldname": "kitchen",
+      "label": "Kitchen",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "custom_room",
+      "label": "Room",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "custom_table",
+      "label": "Table",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "custom_kot_number",
+      "label": "KOT Number",
+      "fieldtype": "Data"
+    },
+    {
+      "fieldname": "custom_kot_status",
+      "label": "KOT Status",
+      "fieldtype": "Select",
+      "options": "New\nCompleted",
+      "default": "New"
+    },
+    {
+      "fieldname": "custom_enable_manufacturing",
+      "label": "Enable Manufacturing",
+      "fieldtype": "Check"
+    },
+    {
+      "fieldname": "items",
+      "label": "Items",
+      "fieldtype": "Table",
+      "options": "Kitchen Order Item"
+    }
+  ],
+  "permissions": [
+    {
+      "role": "System Manager",
+      "read": 1,
+      "write": 1,
+      "create": 1,
+      "delete": 1
+    }
+  ]
+}

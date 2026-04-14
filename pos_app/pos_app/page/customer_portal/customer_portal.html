@@ -1,0 +1,57 @@
+<div class="pos-display-container">
+	<div id="empty-state" class="empty-state">
+	</div>
+
+	<div id="data-content" class="data-content">
+		<div class="pos-header">
+			<h4>Invoice</h4>
+			<span class="invoice-no">Invoice #: <span id="invoice-number">000123</span></span>
+
+		<div class="invoice-details">
+			<span class="invoice-customer">Customer: <span id="invoice-customer"></span></span>
+			<span class="invoice-phone">Phone: <span id="invoice-phone"></span></span>
+			<span class="invoice-date">Date: <span id="invoice-date"></span></span>
+
+		</div>
+	</div>
+
+	<div class="pos-body">
+		<div class="items-section">
+			<table class="pos-items-table">
+				<thead>
+					<tr>
+						<th class="item-name">Item</th>
+						<th class="item-qty">Qty</th>
+						<th class="item-uom">UOM</th>
+						<th class="item-rate">Rate</th>
+						<th class="item-amount">Amount</th>
+					</tr>
+				</thead>
+				<tbody id="items-tbody">
+					<!-- Items will be populated here -->
+				</tbody>
+			</table>
+		</div>
+
+		<div class="totals-section">
+			<div class="totals-wrapper">
+				<div class="total-row subtotal">
+					<span class="label">Net total</span>
+					<span class="value" id="subtotal">0.00</span>
+				</div>
+				<div class="total-row tax-row">
+					<span class="label">Tax</span>
+					<span class="value" id="tax-amount">0.00</span>
+				</div>
+				<div class="total-row discount-row" id="discount-section" style="display: none;">
+					<span class="label">Discount</span>
+					<span class="value" id="discount-amount">0.00</span>
+				</div>
+				<div class="total-row grand-total">
+					<span class="label">Grand Total</span>
+					<span class="value" id="grand-total">0.00</span>
+				</div>
+			</div>
+		</div>
+	</div>
+</div>

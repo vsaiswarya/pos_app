@@ -1,0 +1,77 @@
+<style>
+    #kitchen-orders-app {
+        padding: 24px;
+        background: #f7f8fa;
+        min-height: 100vh;
+        font-family: Arial, sans-serif;
+    }
+    #kitchen-orders-app header {
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.07);
+        padding: 10px;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        margin-bottom: 24px;
+    }
+    #kitchen-orders-app h2 {
+        margin: 0 0 12px 0;
+        font-size: 2rem;
+        color: #2d3748;
+        letter-spacing: 1px;
+    }
+    .search-refresh-row {
+        display: flex;
+        gap: 12px;
+        width: 100%;
+        align-items: center;
+        justify-content: flex-end;
+    }
+    #search-orders {
+        padding: 6px 16px;
+        border-radius: 8px;
+        border: 1px solid #cbd5e1;
+        width: 320px;
+        font-size: 1rem;
+        background: #f1f5f9;
+        transition: border 0.2s;
+    }
+    #search-orders:focus {
+        outline: none;
+        border: 1.5px solid #3182ce;
+        background: #fff;
+    }
+    #orders-grid {
+        margin-top: 0;
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+        gap: 20px;
+        padding: 0 4px;
+    }
+    .order-card-placeholder {
+        background: #fff;
+        border-radius: 10px;
+        box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+        min-height: 120px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: #a0aec0;
+        font-size: 1.1rem;
+        font-style: italic;
+        opacity: 0.7;
+    }
+</style>
+<div id="kitchen-orders-app">
+    <header>
+        <div class="search-refresh-row">
+            <input id="search-orders" type="text" placeholder="🔍 Search orders...">
+            <button class="btn btn-primary" id="refresh-orders"> Refresh</button>
+        </div>
+    </header>
+    <div id="orders-grid">
+        <div class="order-card-placeholder">No orders to display yet.</div>
+        <!-- Order cards will load here -->
+    </div>
+</div>
