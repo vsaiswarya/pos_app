@@ -100,6 +100,24 @@ def send_pos_invoice_whatsapp(doc, method=None):
         )
 
 
+# def get_pos_invoice_whatsapp_number(doc):
+#     if getattr(doc, "custom_whatsapp_number", None):
+#         return normalize_number(doc.custom_whatsapp_number)
+
+#     if getattr(doc, "contact_mobile", None):
+#         return normalize_number(doc.contact_mobile)
+
+#     if getattr(doc, "mobile_no", None):
+#         return normalize_number(doc.mobile_no)
+
+#     if getattr(doc, "phone", None):
+#         return normalize_number(doc.phone)
+
+#     if doc.customer:
+#         return get_customer_whatsapp_number(doc.customer)
+
+#     return None
+
 def get_pos_invoice_whatsapp_number(doc):
     if getattr(doc, "custom_whatsapp_number", None):
         return normalize_number(doc.custom_whatsapp_number)
@@ -117,6 +135,7 @@ def get_pos_invoice_whatsapp_number(doc):
         return get_customer_whatsapp_number(doc.customer)
 
     return None
+
 
 
 def get_customer_whatsapp_number(customer):
@@ -311,6 +330,26 @@ def send_whatsapp_with_pdf(
     except Exception:
         frappe.log_error(frappe.get_traceback(), "Twilio WhatsApp Message Log Error")
 
+    try:
+        payload = {
+            "customer": customer,
+            "customer_name": frappe.db.get_value("Customer", customer, "customer_name") if customer else None,
+            "customer_phone": to_number,
+            "twilio_phone": from_number,
+            "body": display_body,
+            "media_url": public_pdf_url,
+            "message_sid": msg.sid,
+            "status": msg.status,
+            "timestamp": now(),
+            "reference_doctype": reference_doctype,
+            "reference_name": reference_name
+        }
+
+        push_to_site_b(payload)
+
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Push to Site B Error")
+
     return msg
 
 def normalize_number(number):
@@ -444,3 +483,20 @@ def get_or_create_whatsapp_conversation(customer, customer_number, twilio_number
     })
     conv.insert(ignore_permissions=True)
     return conv.name
+
+
+import requests
+import frappe
+
+def push_to_site_b(payload):
+    url = "https://erp.addon-s.com/api/method/twilio_whatsapp_custom.api.sync_whatsapp"
+
+    headers = {
+        "Authorization": "token 035965313a30241:5837b583b5f925b",
+        "Content-Type": "application/json"
+    }
+
+    try:
+        requests.post(url, json={"payload": payload}, headers=headers, timeout=10)
+    except Exception:
+        frappe.log_error(frappe.get_traceback(), "Site B Sync Failed")

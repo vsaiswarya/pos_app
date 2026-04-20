@@ -11,6 +11,10 @@ app_license = "MIT"
 # include js, css files in header of desk.html
 # app_include_css = "/assets/pos_app/css/pos_app.css"
 app_include_js = "pos_app.bundle.js"
+# app_include_js = ["/assets/pos_app/dist/js/pos_app.bundle.TSWUR43L.js"]
+# page_js = {
+#     "point-of-sale": "public/js/pos_controller.js"
+# }
 
 # include js, css files in header of web template
 # web_include_css = "/assets/pos_app/css/pos_app.css"
@@ -127,7 +131,8 @@ doc_events = {
         ],
 		"on_submit": ["pos_app.overrides.pos_invoice.update_reserved_qty",
 					  "pos_app.overrides.pos_invoice.submit_stock_entry",
-                       "pos_app.pos_invoice_whatsapp.send_pos_invoice_whatsapp"
+                       "pos_app.pos_invoice_whatsapp.send_pos_invoice_whatsapp",
+                       "pos_app.overrides.pos_invoice.cleanup_walkin_customer_after_submit"
 					#   "pos_app.pos_app.doctype.kitchen_order.kitchen_order.create_kitchen_orders_from_invoice"
 ],
 		"on_cancel": "pos_app.overrides.pos_invoice.update_reserved_qty_cancel",

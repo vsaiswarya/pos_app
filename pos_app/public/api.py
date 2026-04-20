@@ -44,19 +44,179 @@ def get_item_uoms(item_code):
 	return uoms
 
 
+# @frappe.whitelist()
+# def submit_pos_invoice(docname):
+# 	"""Submit POS Invoice"""
+# 	doc = frappe.get_doc("POS Invoice", docname)
+# 	if doc.docstatus == 0:
+# 		doc.submit()
+# 	print_format,qz_siv,siv_printer = frappe.db.get_value("POS Profile", doc.pos_profile, ["print_format","custom_enable_siv_print_in_qztray","custom_siv_printer_name"])
+# 	return {
+# 		"doc": doc.as_dict(),
+# 		"print_format": print_format,
+# 		"qz_siv":qz_siv,
+# 		"siv_printer": siv_printer
+# 	}
 @frappe.whitelist()
-def submit_pos_invoice(docname):
-	"""Submit POS Invoice"""
-	doc = frappe.get_doc("POS Invoice", docname)
-	if doc.docstatus == 0:
-		doc.submit()
-	print_format,qz_siv,siv_printer = frappe.db.get_value("POS Profile", doc.pos_profile, ["print_format","custom_enable_siv_print_in_qztray","custom_siv_printer_name"])
-	return {
-		"doc": doc.as_dict(),
-		"print_format": print_format,
-		"qz_siv":qz_siv,
-		"siv_printer": siv_printer
-	}
+def submit_pos_invoice(docname, walkin_mobile=None, walkin_email=None):
+    import frappe
+    from pos_app.overrides.pos_invoice import (
+        is_walkin_customer,
+        normalize_phone,
+        get_or_create_walkin_contact,
+        clear_walkin_customer_master,
+    )
+
+    doc = frappe.get_doc("POS Invoice", docname)
+
+    if doc.docstatus == 2:
+        frappe.throw(f"POS Invoice {doc.name} is cancelled. Use a draft invoice.")
+
+    customer = (doc.customer or "").strip()
+    walkin_mobile = normalize_phone(walkin_mobile)
+    walkin_email = (walkin_email or "").strip()
+
+    # already submitted
+    if doc.docstatus == 1:
+        print_format, qz_siv, siv_printer = frappe.db.get_value(
+            "POS Profile",
+            doc.pos_profile,
+            ["print_format", "custom_enable_siv_print_in_qztray", "custom_siv_printer_name"]
+        )
+        return {
+            "doc": doc.as_dict(),
+            "print_format": print_format,
+            "qz_siv": qz_siv,
+            "siv_printer": siv_printer
+        }
+
+    standalone_contact = None
+    master_contact_name = ""
+
+    if is_walkin_customer(customer):
+        # If JS did not pass values, read them from the master walkin contact
+        if not walkin_mobile or not walkin_email:
+            master = get_walkin_master_details(customer)
+            master_contact_name = master.get("contact_name") or ""
+
+            if not walkin_mobile:
+                walkin_mobile = normalize_phone(master.get("mobile"))
+
+            if not walkin_email:
+                walkin_email = (master.get("email") or "").strip()
+
+        # Save onto invoice draft first
+        doc.custom_whatsapp_number = walkin_mobile or ""
+        doc.custom_email_address = walkin_email or ""
+        doc.contact_mobile = walkin_mobile or ""
+        doc.contact_email = walkin_email or ""
+        doc.contact_person = ""
+        doc.contact_display = walkin_mobile or walkin_email or ""
+
+        doc.save(ignore_permissions=True)
+
+        # Create/reuse separate standalone contact
+        if walkin_mobile:
+            standalone_contact = get_or_create_walkin_contact(
+                customer=customer,
+                mobile_no=walkin_mobile,
+                email_id=walkin_email
+            )
+
+    if doc.docstatus == 0:
+        doc.submit()
+
+    # Force-write values back after submit so they stay visible
+    if is_walkin_customer(customer):
+        frappe.db.set_value("POS Invoice", doc.name, "custom_whatsapp_number", walkin_mobile or "", update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "custom_email_address", walkin_email or "", update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "contact_mobile", walkin_mobile or "", update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "contact_email", walkin_email or "", update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "contact_display", walkin_mobile or walkin_email or "", update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "contact_person", "", update_modified=False)
+        frappe.db.commit()
+
+        # Clear the master walkin contact so dropdown stays blank next time
+        clear_walkin_customer_master(customer)
+
+        frappe.log_error(
+            (
+                f"docname: {doc.name}\n"
+                f"master_contact_used: {master_contact_name}\n"
+                f"walkin_mobile final: {walkin_mobile or ''}\n"
+                f"walkin_email final: {walkin_email or ''}\n"
+                f"standalone_contact_created: {standalone_contact or ''}"
+            ),
+            "Submit POS Walkin Final"
+        )
+
+    doc = frappe.get_doc("POS Invoice", doc.name)
+
+    print_format, qz_siv, siv_printer = frappe.db.get_value(
+        "POS Profile",
+        doc.pos_profile,
+        ["print_format", "custom_enable_siv_print_in_qztray", "custom_siv_printer_name"]
+    )
+
+    return {
+        "doc": doc.as_dict(),
+        "print_format": print_format,
+        "qz_siv": qz_siv,
+        "siv_printer": siv_printer
+    }
+
+
+def get_walkin_master_contact(customer="walkin customer"):
+    rows = frappe.db.sql("""
+        SELECT c.name
+        FROM `tabContact` c
+        INNER JOIN `tabDynamic Link` dl
+            ON dl.parent = c.name
+        WHERE dl.parenttype = 'Contact'
+          AND dl.link_doctype = 'Customer'
+          AND dl.link_name = %s
+        ORDER BY c.modified DESC
+        LIMIT 1
+    """, (customer,), as_dict=True)
+
+    if not rows:
+        return None
+
+    return frappe.get_doc("Contact", rows[0].name)
+
+
+def get_walkin_master_details(customer="walkin customer"):
+    contact = get_walkin_master_contact(customer)
+    if not contact:
+        return {"mobile": "", "email": "", "contact_name": ""}
+
+    mobile = ""
+    email = ""
+
+    for p in contact.phone_nos or []:
+        if p.phone:
+            mobile = p.phone
+            if getattr(p, "is_primary_mobile_no", 0) or getattr(p, "is_primary_phone", 0):
+                break
+
+    if not mobile:
+        mobile = (contact.mobile_no or contact.phone or "").strip()
+
+    for e in contact.email_ids or []:
+        if e.email_id:
+            email = e.email_id
+            if getattr(e, "is_primary", 0):
+                break
+
+    if not email:
+        email = (contact.email_id or "").strip()
+
+    return {
+        "mobile": mobile or "",
+        "email": email or "",
+        "contact_name": contact.name
+    }
+
 
 @frappe.whitelist()
 def submit_pos_closing(denominations):

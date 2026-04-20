@@ -1,3 +1,106 @@
+function is_walkin_customer_name(customer) {
+	return ["walkin customer", "walk in customer", "walk-in customer"].includes(
+		(customer || "").trim().toLowerCase()
+	);
+}
+
+function get_walkin_contact_from_customer_card() {
+	const selectors = [
+		".customer-section",
+		".customer-name-section",
+		".customer-details",
+		".customer-name",
+		".customer-info",
+		".pos-bill-item",
+		".pos-bill"
+	];
+
+	let text = "";
+
+	selectors.forEach((sel) => {
+		document.querySelectorAll(sel).forEach((el) => {
+			const t = (el.innerText || "").trim();
+			if (t) text += " " + t;
+		});
+	});
+
+	// fallback: read whole page text if still empty
+	if (!text.trim()) {
+		text = document.body ? (document.body.innerText || "") : "";
+	}
+
+	const email_match = text.match(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+	const phone_match = text.match(/\+?\d[\d\s-]{7,}\d/);
+
+	return {
+		email: email_match ? email_match[0].trim() : "",
+		mobile: phone_match ? phone_match[0].replace(/\s+/g, "") : "",
+		raw_text: text
+	};
+}
+
+function ensure_walkin_cache() {
+	if (!window.cur_pos_walkin_cache) {
+		window.cur_pos_walkin_cache = { mobile: "", email: "" };
+	}
+	return window.cur_pos_walkin_cache;
+}
+function get_walkin_contact_from_sidebar() {
+	let email = "";
+	let mobile = "";
+
+	$("input").each(function () {
+		const placeholder = (this.placeholder || "").toLowerCase();
+		const val = ($(this).val() || "").trim();
+
+		if (!val) return;
+
+		if (placeholder.includes("customer's email") || placeholder.includes("email")) {
+			email = val;
+		}
+
+		if (placeholder.includes("customer's phone") || placeholder.includes("phone number") || placeholder.includes("phone")) {
+			mobile = val.replace(/\s+/g, "");
+		}
+	});
+
+	return { email, mobile };
+}
+
+function get_input_by_label_text(labelText) {
+	let found = "";
+
+	$("label, .control-label, .frappe-control label, .form-column label").each(function () {
+		const txt = ($(this).text() || "").trim().toLowerCase();
+		if (txt !== labelText.toLowerCase()) return;
+
+		// try same control wrapper first
+		let input = $(this).closest(".frappe-control, .form-group, .control-input-wrapper, .field-area").find("input").first();
+
+		// fallback: nearest sibling input
+		if (!input.length) {
+			input = $(this).parent().find("input").first();
+		}
+
+		// fallback: next input in same panel
+		if (!input.length) {
+			input = $(this).nextAll("input").first();
+		}
+
+		if (input.length) {
+			found = (input.val() || "").trim();
+		}
+	});
+
+	return found;
+}
+
+function get_walkin_contact_from_contact_panel() {
+	const email = get_input_by_label_text("Email");
+	const mobile = get_input_by_label_text("Phone Number").replace(/\s+/g, "");
+	return { email, mobile };
+}
+
 frappe.provide("erpnext.PointOfSale");
 
 frappe.require('point-of-sale.bundle.js', () => {
@@ -131,6 +234,9 @@ frappe.require('point-of-sale.bundle.js', () => {
 					return;
 				}
 				const current_room = rooms
+
+				
+
 
 				function render_table_buttons(selected_room, dialog) {
 					frappe.call({
@@ -293,6 +399,35 @@ frappe.require('point-of-sale.bundle.js', () => {
 					cur_pos.item_selector.item_group_field.set_value(selected_group);
 				}
 			});
+			setTimeout(() => {
+				this.set_customer_for_walkin_fix();
+			}, 800);
+		}
+
+		set_customer_for_walkin_fix() {
+			if (!this.customer_selector || !this.customer_selector.set_customer) return;
+
+			const original_set_customer = this.customer_selector.set_customer.bind(this.customer_selector);
+
+			this.customer_selector.set_customer = async (...args) => {
+				const result = await original_set_customer(...args);
+
+				const customer = (this.frm?.doc?.customer || "").trim().toLowerCase();
+				const is_walkin = ["walkin customer", "walk in customer", "walk-in customer"].includes(customer);
+
+				if (is_walkin) {
+					await this.frm.set_value("contact_person", "");
+					await this.frm.set_value("contact_display", "");
+
+					this.customer_details = {};
+					if (window.cur_pos) {
+						cur_pos.customer_details = {};
+					}
+					window.cur_pos_walkin_cache = { mobile: "", email: "" };
+				}
+
+				return result;
+			};
 		}
 		make_sales_invoice_frm() {
 			const doctype = "POS Invoice";
@@ -588,8 +723,10 @@ frappe.require('point-of-sale.bundle.js', () => {
 				events: {
 					get_frm: () => this.frm || {},
 
-					get_customer_details: () => this.customer_details || {},
-
+					// get_customer_details: () => this.customer_details || {},
+					get_customer_details: () => {
+						return this.customer_details || {};
+					},
 					toggle_other_sections: (show) => {
 						if (show) {
 							this.item_details.$component.is(":visible")
@@ -602,66 +739,142 @@ frappe.require('point-of-sale.bundle.js', () => {
 					},
 
 					submit_invoice: (print) => {
-                        const customer_details = this.customer_details || {};
 						const doc = this.frm.doc || {};
+						const customer = (doc.customer || "").trim().toLowerCase();
+						const is_walkin = ["walkin customer", "walk in customer", "walk-in customer"].includes(customer);
 
-						// Try to read live values from visible inputs first
-						const live_mobile =
+						const ui_mobile =
 							$('input[data-fieldname="contact_mobile"]').val() ||
 							$('input[data-fieldname="mobile_no"]').val() ||
 							$('input[data-fieldname="phone"]').val() ||
 							"";
 
-						const live_email =
+						const ui_email =
 							$('input[data-fieldname="contact_email"]').val() ||
 							$('input[data-fieldname="email_id"]').val() ||
 							$('input[data-fieldname="email"]').val() ||
 							"";
 
-						const whatsapp_number =
-							live_mobile ||
-							doc.custom_whatsapp_number ||
-							doc.contact_mobile ||
-							doc.mobile_no ||
-							doc.phone ||
-							customer_details.contact_mobile ||
-							customer_details.mobile_no ||
-							customer_details.mobile ||
-							customer_details.phone ||
-							"";
+						let whatsapp_number = "";
+						let email_address = "";
 
-						const email_address =
-							live_email ||
-							doc.custom_email_address ||
-							doc.contact_email ||
-							doc.email_id ||
-							doc.email ||
-							customer_details.contact_email ||
-							customer_details.email_id ||
-							customer_details.email ||
-							"";
+						if (is_walkin) {
+							const phone_prompt = window.prompt("Enter Walk In Customer Phone Number", this.frm.doc.custom_whatsapp_number || "");
+							if (phone_prompt === null) return;
 
-						this.frm.set_value("custom_whatsapp_number", whatsapp_number);
-						this.frm.set_value("custom_email_address", email_address);
+							const email_prompt = window.prompt("Enter Walk In Customer Email", this.frm.doc.custom_email_address || "");
+							if (email_prompt === null) return;
 
-						// Also copy into standard invoice fields so submit/save uses same values
-						if (whatsapp_number) {
-							this.frm.set_value("contact_mobile", whatsapp_number);
+							whatsapp_number = (phone_prompt || "").trim();
+							email_address = (email_prompt || "").trim();
+
+							this.frm.doc.custom_whatsapp_number = whatsapp_number || "";
+							this.frm.doc.custom_email_address = email_address || "";
+							this.frm.doc.contact_mobile = whatsapp_number || "";
+							this.frm.doc.contact_email = email_address || "";
+							this.frm.doc.contact_person = "";
+							this.frm.doc.contact_display = whatsapp_number || email_address || "";
+
+							this.frm.refresh_field("custom_whatsapp_number");
+							this.frm.refresh_field("custom_email_address");
+							this.frm.refresh_field("contact_mobile");
+							this.frm.refresh_field("contact_email");
+
+
+
+
+
+
+						} else {
+							const customer_details = this.customer_details || {};
+
+							whatsapp_number =
+								ui_mobile ||
+								doc.custom_whatsapp_number ||
+								doc.contact_mobile ||
+								doc.mobile_no ||
+								doc.phone ||
+								customer_details.contact_mobile ||
+								customer_details.mobile_no ||
+								customer_details.mobile ||
+								customer_details.phone ||
+								"";
+
+							email_address =
+								ui_email ||
+								doc.custom_email_address ||
+								doc.contact_email ||
+								doc.email_id ||
+								doc.email ||
+								customer_details.contact_email ||
+								customer_details.email_id ||
+								customer_details.email ||
+								"";
 						}
-						if (email_address) {
-							this.frm.set_value("contact_email", email_address);
-						}
 
-						console.log("LIVE MOBILE:", live_mobile);
-						console.log("LIVE EMAIL:", live_email);
+						this.frm.doc.custom_whatsapp_number = whatsapp_number || "";
+						this.frm.doc.custom_email_address = email_address || "";
+						this.frm.doc.contact_mobile = whatsapp_number || "";
+						this.frm.doc.contact_email = email_address || "";
+
+						this.frm.refresh_field("custom_whatsapp_number");
+						this.frm.refresh_field("custom_email_address");
+						this.frm.refresh_field("contact_mobile");
+						this.frm.refresh_field("contact_email");
+
+						console.log("IS WALKIN:", is_walkin);
 						console.log("FINAL WHATSAPP:", whatsapp_number);
 						console.log("FINAL EMAIL:", email_address);
 
+
+
+
+
 						this.frm.save(null, null, null, () => (save_error = true)).then(() => {
+							console.log("SUBMIT POS INVOICE ARGS", {
+							docname: this.frm.doc.name,
+							is_walkin,
+							walkin_mobile: is_walkin ? (
+								$('input[data-fieldname="contact_mobile"]').val() ||
+								$('input[data-fieldname="mobile_no"]').val() ||
+								$('input[data-fieldname="phone"]').val() ||
+								this.frm.doc.contact_mobile ||
+								this.frm.doc.custom_whatsapp_number ||
+								""
+							) : "",
+							walkin_email: is_walkin ? (
+								$('input[data-fieldname="contact_email"]').val() ||
+								$('input[data-fieldname="email_id"]').val() ||
+								$('input[data-fieldname="email"]').val() ||
+								this.frm.doc.contact_email ||
+								this.frm.doc.custom_email_address ||
+								""
+							) : ""
+						});
+							// const card_values = is_walkin ? get_walkin_contact_from_customer_card() : { mobile: "", email: "" };
+							// frappe.call({
+							// 	method: "pos_app.public.api.submit_pos_invoice",
+								// args: {
+								// 	docname: this.frm.doc.name,
+								// },
+								
+							frappe.msgprint({
+								title: "Walkin Debug",
+								message: `
+									docname: ${this.frm.doc.name}<br>
+									is_walkin: ${is_walkin}<br>
+									walkin_mobile: ${whatsapp_number || ""}<br>
+									walkin_email: ${email_address || ""}
+								`
+							});
+							const panel_values = is_walkin ? get_walkin_contact_from_contact_panel() : { mobile: "", email: "" };
+
 							frappe.call({
 								method: "pos_app.public.api.submit_pos_invoice",
 								args: {
 									docname: this.frm.doc.name,
+									walkin_mobile: is_walkin ? (whatsapp_number || "") : "",
+									walkin_email: is_walkin ? (email_address || "") : ""
 								},
 								freeze: true,
 								freeze_message: __("Creating POS Invoice..."),
@@ -1024,9 +1237,37 @@ frappe.require('point-of-sale.bundle.js', () => {
 			this.$numpad = this.$component.find(".number-pad");
 			this.$invoice_fields_section = this.$component.find(".fields-section");
 		}
+
+
 		bind_events() {
 			const me = this;
+			
 
+			const attach_walkin_popup_capture = () => {
+			$(document).off(".walkin_popup_capture");
+
+			$(document).on("input.walkin_popup_capture blur.walkin_popup_capture", ".modal.show input, .frappe-dialog.show input", function () {
+				const customer = ((me.events.get_frm().doc.customer) || "").trim().toLowerCase();
+				if (!is_walkin_customer_name(customer)) return;
+
+				const cache = extract_walkin_from_open_dialog();
+				console.log("WALKIN CACHE UPDATED", cache);
+			});
+
+			$(document).on("click.walkin_popup_capture", ".modal.show .btn-primary, .frappe-dialog.show .btn-primary", function () {
+				const customer = ((me.events.get_frm().doc.customer) || "").trim().toLowerCase();
+				if (!is_walkin_customer_name(customer)) return;
+
+				setTimeout(() => {
+					const cache = extract_walkin_from_open_dialog();
+					console.log("WALKIN CACHE AFTER DIALOG SAVE", cache);
+				}, 200);
+			});
+		};
+
+		setTimeout(() => {
+			attach_walkin_popup_capture();
+		}, 500);
 			this.$payment_modes.on("click", ".mode-of-payment", function (e) {
 				const mode_clicked = $(this);
 				// if clicked element doesn't have .mode-of-payment class then return
@@ -1074,27 +1315,49 @@ frappe.require('point-of-sale.bundle.js', () => {
 			// 		request_button.removeClass("btn-primary").addClass("btn-default");
 			// 	}
 			// });
-            frappe.ui.form.on("POS Invoice", "contact_mobile", (frm) => {
-                const contact = frm.doc.contact_mobile || "";
-                const request_button = $(this.request_for_payment_field?.$input[0]);
+            // frappe.ui.form.on("POS Invoice", "contact_mobile", (frm) => {
+            //     const contact = frm.doc.contact_mobile || "";
+            //     const request_button = $(this.request_for_payment_field?.$input[0]);
 
-                frm.set_value("custom_whatsapp_number", contact);
+            //     frm.set_value("custom_whatsapp_number", contact);
 
-                if (contact) {
-                    request_button.removeClass("btn-default").addClass("btn-primary");
-                } else {
-                    request_button.removeClass("btn-primary").addClass("btn-default");
-                }
-            });
+            //     if (contact) {
+            //         request_button.removeClass("btn-default").addClass("btn-primary");
+            //     } else {
+            //         request_button.removeClass("btn-primary").addClass("btn-default");
+            //     }
+            // });
 
-            frappe.ui.form.on("POS Invoice", "contact_email", (frm) => {
-                frm.set_value("custom_email_address", frm.doc.contact_email || "");
-            });
+            // frappe.ui.form.on("POS Invoice", "contact_email", (frm) => {
+            //     frm.set_value("custom_email_address", frm.doc.contact_email || "");
+            // });
 
-            frappe.ui.form.on("POS Invoice", "email_id", (frm) => {
-                frm.set_value("custom_email_address", frm.doc.email_id || "");
-            });
+            // frappe.ui.form.on("POS Invoice", "email_id", (frm) => {
+            //     frm.set_value("custom_email_address", frm.doc.email_id || "");
+            // });
 
+
+			frappe.ui.form.on("POS Invoice", {
+				contact_mobile(frm) {
+					if (!is_walkin_customer_name(frm.doc.customer)) return;
+					frm.doc.custom_whatsapp_number = frm.doc.contact_mobile || "";
+					frm.refresh_field("custom_whatsapp_number");
+				},
+
+				contact_email(frm) {
+					if (!is_walkin_customer_name(frm.doc.customer)) return;
+					frm.doc.custom_email_address = frm.doc.contact_email || "";
+					frm.refresh_field("custom_email_address");
+				},
+
+				email_id(frm) {
+					if (!is_walkin_customer_name(frm.doc.customer)) return;
+					frm.doc.custom_email_address = frm.doc.email_id || "";
+					frm.refresh_field("custom_email_address");
+				}
+			});
+
+			
 			frappe.ui.form.on("POS Invoice", "coupon_code", (frm) => {
 				if (frm.doc.coupon_code && !frm.applying_pos_coupon_code) {
 					if (!frm.doc.ignore_pricing_rule) {
@@ -1241,23 +1504,3 @@ frappe.require('point-of-sale.bundle.js', () => {
 
 
 
-frappe.ui.form.on("POS Invoice", {
-	refresh(frm) {
-		if (!frm.doc.customer) return;
-
-		if (frm.doc.custom_whatsapp_number || frm.doc.custom_email_address) return;
-
-		frappe.call({
-			method: "your_real_app_name.overrides.pos_invoice.get_customer_contact_details",
-			args: {
-				customer: frm.doc.customer
-			},
-			callback: function(r) {
-				if (r.message) {
-					frm.set_value("custom_whatsapp_number", r.message.whatsapp_number || "");
-					frm.set_value("custom_email_address", r.message.email_address || "");
-				}
-			}
-		});
-	}
-});

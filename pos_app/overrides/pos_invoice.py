@@ -294,29 +294,260 @@ def submit_stock_entry(doc, method):
 
 
 
+# def set_contact_details_in_pos_invoice(doc, method=None):
+#     if not doc.customer:
+#         return
+
+#     whatsapp_number = ""
+#     email_address = ""
+
+   
+#     if doc.get("contact_mobile"):
+#         whatsapp_number = (doc.get("contact_mobile") or "").strip()
+#     elif doc.get("mobile_no"):
+#         whatsapp_number = (doc.get("mobile_no") or "").strip()
+#     elif doc.get("phone"):
+#         whatsapp_number = (doc.get("phone") or "").strip()
+
+#     if doc.get("contact_email"):
+#         email_address = (doc.get("contact_email") or "").strip()
+#     elif doc.get("email_id"):
+#         email_address = (doc.get("email_id") or "").strip()
+#     elif doc.get("email"):
+#         email_address = (doc.get("email") or "").strip()
+
+   
+#     rows = frappe.db.sql("""
+#         SELECT c.name
+#         FROM `tabContact` c
+#         INNER JOIN `tabDynamic Link` dl
+#             ON dl.parent = c.name
+#         WHERE dl.link_doctype = 'Customer'
+#           AND dl.link_name = %s
+#         ORDER BY IFNULL(c.is_primary_contact, 0) DESC, c.modified DESC
+#         LIMIT 1
+#     """, (doc.customer,), as_dict=True)
+
+#     if rows:
+#         contact = frappe.get_doc("Contact", rows[0].name)
+
+#         latest_mobile = ""
+#         latest_email = ""
+
+#         for row in contact.phone_nos or []:
+#             if row.is_primary_mobile_no:
+#                 latest_mobile = row.phone or ""
+#                 break
+#         if not latest_mobile and contact.phone_nos:
+#             latest_mobile = contact.phone_nos[0].phone or ""
+
+#         for row in contact.email_ids or []:
+#             if row.is_primary:
+#                 latest_email = row.email_id or ""
+#                 break
+#         if not latest_email and contact.email_ids:
+#             latest_email = contact.email_ids[0].email_id or ""
+
+       
+#         if latest_mobile:
+#             whatsapp_number = latest_mobile
+#         if latest_email:
+#             email_address = latest_email
+
+#     doc.custom_whatsapp_number = whatsapp_number
+#     doc.custom_email_address = email_address
+
+#     frappe.log_error(
+#         title="POS Invoice Contact Debug",
+#         message=(
+#             f"Invoice: {doc.name}\n"
+#             f"customer: {doc.customer}\n"
+#             f"final_custom_whatsapp_number: {doc.custom_whatsapp_number}\n"
+#             f"final_custom_email_address: {doc.custom_email_address}"
+#         )
+#     )
+
+
+import frappe
+import re
+
+
+WALKIN_CUSTOMER_NAMES = {
+    "walkin customer",
+    "walk in customer",
+    "walk-in customer",
+}
+
+
+def normalize_phone(number):
+    if not number:
+        return ""
+    number = str(number).strip()
+    number = re.sub(r"[^\d+]", "", number)
+    if number.startswith("00"):
+        number = "+" + number[2:]
+    if number and not number.startswith("+"):
+        number = "+" + number
+    return number
+
+
+def is_walkin_customer(customer_name):
+    return (customer_name or "").strip().lower() in WALKIN_CUSTOMER_NAMES
+
+
+def get_or_create_walkin_contact(customer, mobile_no=None, email_id=None):
+    mobile_no = normalize_phone(mobile_no)
+    email_id = (email_id or "").strip()
+
+    if not customer or not is_walkin_customer(customer):
+        return None
+
+    if not mobile_no:
+        return None
+
+    rows = frappe.db.sql("""
+        SELECT DISTINCT c.name
+        FROM `tabContact` c
+        INNER JOIN `tabContact Phone` cp
+            ON cp.parent = c.name
+        LEFT JOIN `tabDynamic Link` dl
+            ON dl.parent = c.name
+            AND dl.parenttype = 'Contact'
+            AND dl.link_doctype = 'Customer'
+            AND dl.link_name = %s
+        WHERE cp.phone = %s
+          AND dl.name IS NULL
+        ORDER BY c.modified DESC
+        LIMIT 1
+    """, (customer, mobile_no), as_dict=True)
+
+    if rows:
+        contact = frappe.get_doc("Contact", rows[0].name)
+        contact.first_name = mobile_no.replace("+", "")
+        contact.last_name = ""
+
+        if email_id and not any(
+            (d.email_id or "").strip().lower() == email_id.lower()
+            for d in (contact.email_ids or [])
+        ):
+            contact.append("email_ids", {
+                "email_id": email_id,
+                "is_primary": 1 if not contact.email_ids else 0
+            })
+
+        for d in list(contact.links or []):
+            if d.link_doctype == "Customer" and (d.link_name or "").strip().lower() == customer.lower():
+                contact.remove(d)
+
+        contact.save(ignore_permissions=True)
+        return contact.name
+
+    contact = frappe.get_doc({
+        "doctype": "Contact",
+        "first_name": mobile_no.replace("+", ""),
+        "last_name": "",
+        "phone_nos": [{
+            "phone": mobile_no,
+            "is_primary_mobile_no": 1
+        }],
+        "email_ids": [{
+            "email_id": email_id,
+            "is_primary": 1
+        }] if email_id else [],
+        "links": []
+    })
+    contact.insert(ignore_permissions=True)
+    return contact.name
+
+def clear_walkin_customer_master(customer):
+    if not customer or not is_walkin_customer(customer):
+        return
+
+    if frappe.db.exists("Customer", customer):
+        cust = frappe.get_doc("Customer", customer)
+
+        if hasattr(cust, "customer_primary_contact"):
+            cust.customer_primary_contact = ""
+
+        if hasattr(cust, "mobile_no"):
+            cust.mobile_no = ""
+
+        if hasattr(cust, "email_id"):
+            cust.email_id = ""
+
+        cust.save(ignore_permissions=True)
+
+    linked_contacts = frappe.db.sql("""
+        SELECT DISTINCT c.name, c.first_name, c.last_name
+        FROM `tabContact` c
+        INNER JOIN `tabDynamic Link` dl
+            ON dl.parent = c.name
+        WHERE dl.link_doctype = 'Customer'
+          AND dl.link_name = %s
+    """, (customer,), as_dict=True)
+
+    for row in linked_contacts:
+        contact = frappe.get_doc("Contact", row.name)
+        full_name = " ".join(filter(None, [contact.first_name, contact.last_name])).strip().lower()
+
+        if full_name in ("walkin customer", "walk in customer", "walk-in customer"):
+            contact.phone_nos = []
+            contact.email_ids = []
+            contact.save(ignore_permissions=True)
+
 def set_contact_details_in_pos_invoice(doc, method=None):
     if not doc.customer:
         return
 
-    whatsapp_number = ""
-    email_address = ""
+    customer = (doc.customer or "").strip()
 
-   
-    if doc.get("contact_mobile"):
-        whatsapp_number = (doc.get("contact_mobile") or "").strip()
-    elif doc.get("mobile_no"):
-        whatsapp_number = (doc.get("mobile_no") or "").strip()
-    elif doc.get("phone"):
-        whatsapp_number = (doc.get("phone") or "").strip()
+    # Always prefer values already on invoice
+    whatsapp_number = (doc.get("custom_whatsapp_number") or "").strip()
+    email_address = (doc.get("custom_email_address") or "").strip()
 
-    if doc.get("contact_email"):
-        email_address = (doc.get("contact_email") or "").strip()
-    elif doc.get("email_id"):
-        email_address = (doc.get("email_id") or "").strip()
-    elif doc.get("email"):
-        email_address = (doc.get("email") or "").strip()
+    if not whatsapp_number:
+        whatsapp_number = (
+            doc.get("contact_mobile")
+            or doc.get("mobile_no")
+            or doc.get("phone")
+            or ""
+        ).strip()
 
-   
+    if not email_address:
+        email_address = (
+            doc.get("contact_email")
+            or doc.get("email_id")
+            or doc.get("email")
+            or ""
+        ).strip()
+
+    whatsapp_number = normalize_phone(whatsapp_number)
+
+    # WALKIN CUSTOMER FLOW
+    if is_walkin_customer(customer):
+        # keep values on invoice
+        doc.custom_whatsapp_number = whatsapp_number or ""
+        doc.custom_email_address = email_address or ""
+
+        if hasattr(doc, "contact_mobile"):
+            doc.contact_mobile = whatsapp_number or ""
+
+        if hasattr(doc, "contact_email"):
+            doc.contact_email = email_address or ""
+
+        # IMPORTANT:
+        # standalone walkin contact should NOT be assigned to invoice contact_person
+        # otherwise ERPNext throws:
+        # "Contact Person does not belong to the walkin customer"
+        if hasattr(doc, "contact_person"):
+            doc.contact_person = ""
+
+        if hasattr(doc, "contact_display"):
+            doc.contact_display = whatsapp_number or email_address or ""
+
+        return
+
+    # NORMAL CUSTOMER FLOW
     rows = frappe.db.sql("""
         SELECT c.name
         FROM `tabContact` c
@@ -326,7 +557,7 @@ def set_contact_details_in_pos_invoice(doc, method=None):
           AND dl.link_name = %s
         ORDER BY IFNULL(c.is_primary_contact, 0) DESC, c.modified DESC
         LIMIT 1
-    """, (doc.customer,), as_dict=True)
+    """, (customer,), as_dict=True)
 
     if rows:
         contact = frappe.get_doc("Contact", rows[0].name)
@@ -338,6 +569,7 @@ def set_contact_details_in_pos_invoice(doc, method=None):
             if row.is_primary_mobile_no:
                 latest_mobile = row.phone or ""
                 break
+
         if not latest_mobile and contact.phone_nos:
             latest_mobile = contact.phone_nos[0].phone or ""
 
@@ -345,24 +577,20 @@ def set_contact_details_in_pos_invoice(doc, method=None):
             if row.is_primary:
                 latest_email = row.email_id or ""
                 break
+
         if not latest_email and contact.email_ids:
             latest_email = contact.email_ids[0].email_id or ""
 
-       
         if latest_mobile:
-            whatsapp_number = latest_mobile
+            whatsapp_number = normalize_phone(latest_mobile)
+
         if latest_email:
             email_address = latest_email
 
-    doc.custom_whatsapp_number = whatsapp_number
-    doc.custom_email_address = email_address
+    doc.custom_whatsapp_number = whatsapp_number or ""
+    doc.custom_email_address = email_address or ""
 
-    frappe.log_error(
-        title="POS Invoice Contact Debug",
-        message=(
-            f"Invoice: {doc.name}\n"
-            f"customer: {doc.customer}\n"
-            f"final_custom_whatsapp_number: {doc.custom_whatsapp_number}\n"
-            f"final_custom_email_address: {doc.custom_email_address}"
-        )
-    )
+
+def cleanup_walkin_customer_after_submit(doc, method=None):
+    if doc.customer and is_walkin_customer(doc.customer):
+        clear_walkin_customer_master(doc.customer)
