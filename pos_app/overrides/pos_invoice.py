@@ -399,33 +399,22 @@ def get_or_create_walkin_contact(customer, mobile_no=None, email_id=None):
     mobile_no = normalize_phone(mobile_no)
     email_id = (email_id or "").strip()
 
-    if not customer or not is_walkin_customer(customer):
-        return None
-
     if not mobile_no:
         return None
 
-    rows = frappe.db.sql("""
-        SELECT DISTINCT c.name
-        FROM `tabContact` c
-        INNER JOIN `tabContact Phone` cp
-            ON cp.parent = c.name
-        LEFT JOIN `tabDynamic Link` dl
-            ON dl.parent = c.name
-            AND dl.parenttype = 'Contact'
-            AND dl.link_doctype = 'Customer'
-            AND dl.link_name = %s
-        WHERE cp.phone = %s
-          AND dl.name IS NULL
-        ORDER BY c.modified DESC
+    # 🔍 1. Check ANY existing contact by phone (no over-filtering)
+    existing = frappe.db.sql("""
+        SELECT parent
+        FROM `tabContact Phone`
+        WHERE phone = %s
+        ORDER BY modified DESC
         LIMIT 1
-    """, (customer, mobile_no), as_dict=True)
+    """, (mobile_no,), as_dict=True)
 
-    if rows:
-        contact = frappe.get_doc("Contact", rows[0].name)
-        contact.first_name = mobile_no.replace("+", "")
-        contact.last_name = ""
+    if existing:
+        contact = frappe.get_doc("Contact", existing[0].parent)
 
+        # Update email if new
         if email_id and not any(
             (d.email_id or "").strip().lower() == email_id.lower()
             for d in (contact.email_ids or [])
@@ -435,13 +424,10 @@ def get_or_create_walkin_contact(customer, mobile_no=None, email_id=None):
                 "is_primary": 1 if not contact.email_ids else 0
             })
 
-        for d in list(contact.links or []):
-            if d.link_doctype == "Customer" and (d.link_name or "").strip().lower() == customer.lower():
-                contact.remove(d)
-
         contact.save(ignore_permissions=True)
         return contact.name
 
+    # 🆕 2. Create new contact
     contact = frappe.get_doc({
         "doctype": "Contact",
         "first_name": mobile_no.replace("+", ""),
@@ -454,8 +440,9 @@ def get_or_create_walkin_contact(customer, mobile_no=None, email_id=None):
             "email_id": email_id,
             "is_primary": 1
         }] if email_id else [],
-        "links": []
+        "links": []  # keep it standalone as per your requirement
     })
+
     contact.insert(ignore_permissions=True)
     return contact.name
 

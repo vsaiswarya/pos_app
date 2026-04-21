@@ -106,8 +106,8 @@ def submit_pos_invoice(docname, walkin_mobile=None, walkin_email=None):
                 walkin_email = (master.get("email") or "").strip()
 
         # Save onto invoice draft first
-        doc.custom_whatsapp_number = walkin_mobile or ""
-        doc.custom_email_address = walkin_email or ""
+        doc.custom_whatsapp_number = walkin_mobile or doc.custom_whatsapp_number or ""
+        doc.custom_email_address = walkin_email or doc.custom_email_address or ""
         doc.contact_mobile = walkin_mobile or ""
         doc.contact_email = walkin_email or ""
         doc.contact_person = ""
@@ -122,18 +122,41 @@ def submit_pos_invoice(docname, walkin_mobile=None, walkin_email=None):
                 mobile_no=walkin_mobile,
                 email_id=walkin_email
             )
+        if standalone_contact:
+            frappe.db.set_value(
+                "POS Invoice",
+                doc.name,
+                "contact_person",
+                standalone_contact,
+                update_modified=False
+            )    
 
     if doc.docstatus == 0:
         doc.submit()
 
     # Force-write values back after submit so they stay visible
     if is_walkin_customer(customer):
-        frappe.db.set_value("POS Invoice", doc.name, "custom_whatsapp_number", walkin_mobile or "", update_modified=False)
-        frappe.db.set_value("POS Invoice", doc.name, "custom_email_address", walkin_email or "", update_modified=False)
-        frappe.db.set_value("POS Invoice", doc.name, "contact_mobile", walkin_mobile or "", update_modified=False)
-        frappe.db.set_value("POS Invoice", doc.name, "contact_email", walkin_email or "", update_modified=False)
-        frappe.db.set_value("POS Invoice", doc.name, "contact_display", walkin_mobile or walkin_email or "", update_modified=False)
-        frappe.db.set_value("POS Invoice", doc.name, "contact_person", "", update_modified=False)
+
+        final_mobile = walkin_mobile or doc.custom_whatsapp_number or ""
+        final_email = walkin_email or doc.custom_email_address or ""
+
+        frappe.db.set_value("POS Invoice", doc.name, "custom_whatsapp_number", final_mobile, update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "custom_email_address", final_email, update_modified=False)
+
+        frappe.db.set_value("POS Invoice", doc.name, "contact_mobile", final_mobile, update_modified=False)
+        frappe.db.set_value("POS Invoice", doc.name, "contact_email", final_email, update_modified=False)
+
+        frappe.db.set_value(
+            "POS Invoice",
+            doc.name,
+            "contact_display",
+            final_mobile or final_email or "",
+            update_modified=False
+        )
+
+        # DO NOT force empty — keep existing if any
+        # frappe.db.set_value("POS Invoice", doc.name, "contact_person", "", update_modified=False)
+
         frappe.db.commit()
 
         # Clear the master walkin contact so dropdown stays blank next time

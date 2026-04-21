@@ -873,8 +873,8 @@ frappe.require('point-of-sale.bundle.js', () => {
 								method: "pos_app.public.api.submit_pos_invoice",
 								args: {
 									docname: this.frm.doc.name,
-									walkin_mobile: is_walkin ? (whatsapp_number || "") : "",
-									walkin_email: is_walkin ? (email_address || "") : ""
+									walkin_mobile: is_walkin ? (panel_values.mobile || whatsapp_number || this.frm.doc.custom_whatsapp_number || "") : "",
+									walkin_email: is_walkin ? (panel_values.email || email_address || this.frm.doc.custom_email_address || "") : ""
 								},
 								freeze: true,
 								freeze_message: __("Creating POS Invoice..."),
@@ -888,7 +888,6 @@ frappe.require('point-of-sale.bundle.js', () => {
 										if (print) {
 											this.print_receipt(r);
 										}
-										// this.order_summary.toggle_component(false);
 										this.make_sales_invoice_frm().then(() => {
 											this.order_summary.events.new_order();
 										});
